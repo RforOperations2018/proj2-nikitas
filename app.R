@@ -30,35 +30,23 @@ ckanUniques <- function(id, field) {
 
 neighborhoods <- sort(ckanUniques("76fda9d0-69be-4dd5-8108-0de7907fc5a4", "NEIGHBORHOOD")$NEIGHBORHOOD)
 sources <- sort(ckanUniques("76fda9d0-69be-4dd5-8108-0de7907fc5a4", "REQUEST_ORIGIN")$REQUEST_ORIGIN)
+types <- sort(ckanUniques("76fda9d0-69be-4dd5-8108-0de7907fc5a4", "REQUEST_TYPE")$REQUEST_ORIGIN)
 
 #pdf(NULL)
 
 # Creating dashboard header
-header <- dashboardHeader(title = "Opiates Dashboard")
+header <- dashboardHeader(title = "Pittsburgh 311 Dashboard")
 
 # Creating dashboard sidebar
 sidebar <- dashboardSidebar(
   sidebarMenu(
     id = "tabs",
     # Setting dashboard menu items / pages
-    menuItem("Prescription Trends", icon = icon("medkit"), tabName = "prescription"),
-    menuItem("Service Usage", icon = icon("users"), tabName = "service"),
-    menuItem("Ties to Criminal Justice System", icon = icon("gavel"), tabName = "cjs"),
+    menuItem("Trends by Request Type", icon = icon("hand-o-up"), tabName = "type"),
+    menuItem("Neighborhood Report", icon = icon("group"), tabName = "neighborhood"),
+    menuItem("Origin Analysis", icon = icon("mobile"), tabName = "origin"),
     menuItem("Data Exploration", icon = icon("table"), tabName = "data"),
-    # Adding global select input for race
-    selectInput("race_select",
-                "Race:", 
-                choices = unique(merged$race),
-                multiple = TRUE,
-                selectize = TRUE,
-                selected = c("White", "Black/African-American", "Other")),
-    # Adding global select input for gender
-    selectInput("gender_select",
-                "Gender:",
-                choices = unique(merged$gender),
-                multiple = TRUE,
-                selectize = TRUE,
-                selected = c("Female", "Male", "Other")),
+    # no global inputs needed
     # Adding reset button to reset ALL filters
     actionButton("reset", "Reset Filters", icon = icon("refresh"))
   )
