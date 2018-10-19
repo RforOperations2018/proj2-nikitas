@@ -280,6 +280,63 @@ server <- function(input, output, session) {
       mutate(NBHD_TOTAL = sum(count))
   })
   
+  
+  
+  #)#,
+  # Adding elements to the 'service' menu item
+  # tabItem("neighborhood",
+  #         # adding info boxes at the top of the service page
+  #         # fluidRow(
+  #         #   infoBoxOutput("avg_mh"),
+  #         #   infoBoxOutput("avg_da")
+  #         # ),
+  #         # adding local input and plot
+  #         fluidRow(
+  #           box(title = "Does service usage change relative to prescription service usage?",
+  #               width = 12,
+  #               selectInput(
+  #                 "yAxis_select",
+  #                 "Select column for Y axis",
+  #                 choices = colnames(merged[c(33, 34, 38)]),
+  #                 selected = colnames(merged[33])),
+  #               mainPanel(width = 12,
+  #                         plotlyOutput("plot_service"))
+  #           )
+  #         )
+  # ),
+  # # Adding elements to the 'cjs' menu item
+  # tabItem("origin",
+  #         fluidRow(
+  #           # adding info boxes at the top of the page
+  #           infoBoxOutput("avg_jail"),
+  #           infoBoxOutput("avg_charge")
+  #         ),
+  #         # adding plot
+  #         fluidRow(
+  #           box(title = "Is there any association between prescription usage and interaction with the criminal justice system?",
+  #               width = 12,
+  #               mainPanel(width = 12,
+  #                         plotlyOutput("plot_jail"))
+  #           )
+  #         )
+  # ),
+  # # Adding elements to the 'data' menu item
+  # tabItem("data",
+  #         fluidRow(
+  #           box(title = "Use this Data Table to find interesting insights of your own!",
+  #               width = 12,
+  #               # includes download button to get a .csv of the data
+  #               inputPanel(
+  #                 downloadButton("downloadData","Download Pittsburgh 311 Request Data")),
+  #               mainPanel(width = 12,
+  #                         DT::dataTableOutput("table")))
+  #         )
+  # )
+  #)
+  #)
+  
+  
+  
   # # Adding table output (count_data)
   # output$table <- DT::renderDataTable(count_data,
   #                                     options = list(scrollX = TRUE),
@@ -341,3 +398,5 @@ shinyApp(ui = ui, server = server)
 # 
 #  # Running the application
 #  shinyApp(ui = ui, server = server, enableBookmarking = "url")
+
+pitt %>% group_by(DEPARTMENT) %>% summarise(count = n()) %>% arrange(desc(count)) %>% top_n(10)

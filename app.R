@@ -32,14 +32,8 @@ ckanUniques <- function(id, field) {
 }
 
 neighborhoods <- sort(ckanUniques("76fda9d0-69be-4dd5-8108-0de7907fc5a4", "NEIGHBORHOOD")$NEIGHBORHOOD)
-sources <- sort(ckanUniques("76fda9d0-69be-4dd5-8108-0de7907fc5a4", "REQUEST_ORIGIN")$REQUEST_ORIGIN)
 types <- sort(ckanUniques("76fda9d0-69be-4dd5-8108-0de7907fc5a4", "REQUEST_TYPE")$REQUEST_TYPE)
 departments <- sort(ckanUniques("76fda9d0-69be-4dd5-8108-0de7907fc5a4", "DEPARTMENT")$DEPARTMENT)
-dates <- sort(ckanUniques("76fda9d0-69be-4dd5-8108-0de7907fc5a4", "CREATED_ON")$CREATED_ON)
-dates <- as.data.frame(dates)
-years <- separate(dates, dates, "YEAR", '-')
-years <- unique(years$YEAR)
-
 
 #pdf(NULL)
 
@@ -101,6 +95,24 @@ body <- dashboardBody(tabItems(
                             plotlyOutput("nbhd_type_plot")),
                    tabPanel("Request Type Report by Neighborhood",
                             DT::dataTableOutput("nbhd_report")))
+          )),
+  tabItem("department",
+          fluidRow(
+            tabBox(title = "How is each city department performing?",
+                   width = 12,
+                   tabPanel("Visualizations by Department",
+                            selectInput("dept_select",
+                                        "Department:",
+                                        choices = departments,
+                                        multiple = FALSE,
+                                        selectize = TRUE,
+                                        selected = "DPW - Forestry Division"),
+                            plotlyOutput("dept_plot"),
+                            br(),
+                            br(),
+                            plotlyOutput("dept_type_plot")),
+                   tabPanel("Request Type Report by Department",
+                            DT::dataTableOutput("dept_report")))
           ))
   )
 )
@@ -169,10 +181,10 @@ server <- function(input, output, session) {
 
     # Load and clean data
     if (is.null(data[1,1])){
-      updateSelectInput(session, "dept_select", selected = "DPW")
+      updateSelectInput(session, "dept_select", selected = "DPW - Forestry Division")
       alert("There is no data available for your selected input(s). Your filters have been reset. Please try again.")
     } else {
-      data_YEAR <- data %>% separate(CREATED_ON, "YEAR", sep = '-') %>% subset(data, select = c(REQUEST_ID, YEAR))
+      data_YEAR <- data %>% separate(CREATED_ON, "YEAR", sep = '-') %>% subset(select = c(REQUEST_ID, YEAR))
       data_DATE <- data %>%
         mutate(DATE = as.Date(CREATED_ON),
                STATUS = ifelse(STATUS == 1, "Closed", "Open"))
@@ -186,7 +198,7 @@ server <- function(input, output, session) {
   # Point and smooth graph showing count of requests by type over time
   output$type_plot <- renderPlotly({
     dat <- typeFiltered() 
-    dat <- dat %>% group_by(REQUEST_TYPE, DATE) %>% summarise(COUNT = n())
+    dat <- dat %>% group_by(DATE) %>% summarise(COUNT = n())
     ggplotly(
       ggplot(data = dat, aes(x = DATE, y = COUNT)) +
         geom_point(colour = "red") + geom_smooth() + 
@@ -197,7 +209,7 @@ server <- function(input, output, session) {
    # Bar chart showing count by status for each request
    output$status_plot <- renderPlotly({
      dat <- typeFiltered() 
-     dat <- dat %>% group_by(REQUEST_TYPE, STATUS) %>% summarise(COUNT = n())
+     dat <- dat %>% group_by(STATUS) %>% summarise(COUNT = n())
      ggplotly(
        ggplot(data = dat, aes(x = STATUS, y = COUNT, fill = STATUS)) +
          geom_bar(stat = "identity") + 
@@ -208,15 +220,15 @@ server <- function(input, output, session) {
    
    output$type_report <- DT::renderDataTable({
      neigh_year <- typeFiltered() 
-     neigh_year %>% group_by(NEIGHBORHOOD, YEAR) %>%
+     neigh_year %>% group_by(REQUEST_TYPE, NEIGHBORHOOD, YEAR) %>%
        summarise(COUNT_BY_YEAR = n()) %>%
-       group_by(NEIGHBORHOOD) %>%
+       group_by(REQUEST_TYPE, NEIGHBORHOOD) %>%
        mutate(NBHD_TOTAL = sum(COUNT_BY_YEAR))
    })
    
    output$nbhd_plot <- renderPlotly({
      dat <- nbhdFiltered() 
-     dat <- dat %>% group_by(NEIGHBORHOOD, DATE) %>% summarise(COUNT = n())
+     dat <- dat %>% group_by(DATE) %>% summarise(COUNT = n())
      ggplotly(
        ggplot(data = dat, aes(x = DATE, y = COUNT)) +
          geom_point(colour = "red") + geom_smooth() + 
@@ -226,7 +238,7 @@ server <- function(input, output, session) {
    
    output$nbhd_type_plot <- renderPlotly({
      dat <- nbhdFiltered() 
-     dat <- dat %>% group_by(NEIGHBORHOOD, REQUEST_TYPE) %>% summarise(COUNT = n()) %>% arrange(desc(COUNT)) %>% top_n(10)
+     dat <- dat %>% group_by(REQUEST_TYPE) %>% summarise(COUNT = n()) %>% arrange(desc(COUNT)) %>% top_n(10)
      ggplotly(
        ggplot(data = dat, aes(x = reorder(REQUEST_TYPE, -COUNT), y = COUNT, fill = REQUEST_TYPE)) +
          geom_bar(stat = "identity") + 
@@ -237,12 +249,40 @@ server <- function(input, output, session) {
    
    output$nbhd_report <- DT::renderDataTable({
      type_year <- nbhdFiltered() 
-     type_year %>% group_by(REQUEST_TYPE, YEAR) %>%
+     type_year %>% group_by(NEIGHBORHOOD, REQUEST_TYPE, YEAR) %>%
        summarise(COUNT_BY_YEAR = n()) %>%
-       group_by(REQUEST_TYPE) %>%
+       group_by(NEIGHBORHOOD, REQUEST_TYPE) %>%
        mutate(REQUEST_TOTAL = sum(COUNT_BY_YEAR))
    })
    
+   output$dept_plot <- renderPlotly({
+     dat <- deptFiltered() 
+     dat <- dat %>% group_by(DATE) %>% summarise(COUNT = n())
+     ggplotly(
+       ggplot(data = dat, aes(x = DATE, y = COUNT)) +
+         geom_point(colour = "red") + geom_smooth() + 
+         labs(title = "Trend Over Time", x = "Date", y = "Number of Requests") + theme_classic()
+     )
+   })
+   
+   output$dept_type_plot <- renderPlotly({
+     dat <- deptFiltered() 
+     dat <- dat %>% group_by(REQUEST_TYPE) %>% summarise(COUNT = n()) %>% arrange(desc(COUNT)) %>% top_n(10)
+     ggplotly(
+       ggplot(data = dat, aes(x = reorder(REQUEST_TYPE, -COUNT), y = COUNT, fill = REQUEST_TYPE)) +
+         geom_bar(stat = "identity") + 
+         labs(title = "Top 10 Request Types", x = "Request Type", y = "Number of Requests") + 
+         theme_bw()
+     )
+   })
+   
+   output$dept_report <- DT::renderDataTable({
+     type_year <- deptFiltered() 
+     type_year %>% group_by(DEPARTMENT, REQUEST_TYPE, YEAR) %>%
+       summarise(COUNT_BY_YEAR = n()) %>%
+       group_by(NEIGHBORHOOD, REQUEST_TYPE) %>%
+       mutate(REQUEST_TOTAL = sum(COUNT_BY_YEAR))
+   })
 
 }
 
