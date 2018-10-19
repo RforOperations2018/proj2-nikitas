@@ -52,7 +52,7 @@ sidebar <- dashboardSidebar(
     id = "tabs",
     # Setting dashboard menu items / pages
     menuItem("Trends by Request Type", icon = icon("hand-o-up"), tabName = "type"),
-    menuItem("Neighborhood Report", icon = icon("group"), tabName = "neighborhood"),
+    menuItem("Neighborhood Insight", icon = icon("group"), tabName = "neighborhood"),
     menuItem("Department Workflow", icon = icon("building-o"), tabName = "department"),
     menuItem("Data Exploration", icon = icon("table"), tabName = "data"),
     # no global inputs needed
@@ -76,69 +76,35 @@ body <- dashboardBody(tabItems(
                                         choices = types,
                                         multiple = FALSE,
                                         selectize = TRUE,
-                                        selected = c("Potholes")),
+                                        selected = "Potholes"),
                             plotlyOutput("type_plot"), 
                             br(),
                             br(),
                             plotlyOutput("status_plot")),
                    tabPanel("Neighborhood Report by Type", 
                             DT::dataTableOutput("type_report")))
-                   )
-          )
+            )),
+  tabItem("neighborhood",
+          fluidRow(
+            tabBox(title = "What is happening in each neighborhood?",
+                   width = 12,
+                   tabPanel("Visualizations by Neighborhood",
+                            selectInput("nbhd_select",
+                                        "Neighborhood:",
+                                        choices = neighborhoods,
+                                        multiple = FALSE,
+                                        selectize = TRUE,
+                                        selected = "Brookline"),
+                            plotlyOutput("nbhd_plot"),
+                            br(),
+                            br(),
+                            plotlyOutput("nbhd_type_plot")),
+                   tabPanel("Request Type Report by Neighborhood",
+                            DT::dataTableOutput("nbhd_report")))
+          ))
   )
 )
-  #)#,
-  # Adding elements to the 'service' menu item
-  # tabItem("neighborhood",
-  #         # adding info boxes at the top of the service page
-  #         # fluidRow(
-  #         #   infoBoxOutput("avg_mh"),
-  #         #   infoBoxOutput("avg_da")
-  #         # ),
-  #         # adding local input and plot
-  #         fluidRow(
-  #           box(title = "Does service usage change relative to prescription service usage?",
-  #               width = 12,
-  #               selectInput(
-  #                 "yAxis_select",
-  #                 "Select column for Y axis",
-  #                 choices = colnames(merged[c(33, 34, 38)]),
-  #                 selected = colnames(merged[33])),
-  #               mainPanel(width = 12,
-  #                         plotlyOutput("plot_service"))
-  #           )
-  #         )
-  # ),
-  # # Adding elements to the 'cjs' menu item
-  # tabItem("origin",
-  #         fluidRow(
-  #           # adding info boxes at the top of the page
-  #           infoBoxOutput("avg_jail"),
-  #           infoBoxOutput("avg_charge")
-  #         ),
-  #         # adding plot
-  #         fluidRow(
-  #           box(title = "Is there any association between prescription usage and interaction with the criminal justice system?",
-  #               width = 12,
-  #               mainPanel(width = 12,
-  #                         plotlyOutput("plot_jail"))
-  #           )
-  #         )
-  # ),
-  # # Adding elements to the 'data' menu item
-  # tabItem("data",
-  #         fluidRow(
-  #           box(title = "Use this Data Table to find interesting insights of your own!",
-  #               width = 12,
-  #               # includes download button to get a .csv of the data
-  #               inputPanel(
-  #                 downloadButton("downloadData","Download Pittsburgh 311 Request Data")),
-  #               mainPanel(width = 12,
-  #                         DT::dataTableOutput("table")))
-  #         )
- # )
-#)
-#)
+
 
 ui <- dashboardPage(header, sidebar, body, skin = "green", useShinyjs())
 
@@ -219,21 +185,23 @@ server <- function(input, output, session) {
   
   # Point and smooth graph showing count of requests by type over time
   output$type_plot <- renderPlotly({
-    dat <- typeFiltered() %>% group_by(REQUEST_TYPE, DATE) %>% summarise(COUNT = n())
+    dat <- typeFiltered() 
+    dat <- dat %>% group_by(REQUEST_TYPE, DATE) %>% summarise(COUNT = n())
     ggplotly(
-      ggplot(data = dat, aes(x = DATE, y = COUNT, color = REQUEST_TYPE)) +
-        geom_point() + geom_smooth() + 
-        labs(title = "Request Count Trend Over Time", x = "Date", y = "Number of Requests") + 
-        theme_bw()
+      ggplot(data = dat, aes(x = DATE, y = COUNT)) +
+        geom_point(colour = "red") + geom_smooth() + 
+        labs(title = "Trend Over Time", x = "Date", y = "Number of Requests") + 
+       theme_classic()
       )
     })
    # Bar chart showing count by status for each request
    output$status_plot <- renderPlotly({
-     dat <- typeFiltered() %>% group_by(REQUEST_TYPE, STATUS) %>% summarise(COUNT = n())
+     dat <- typeFiltered() 
+     dat <- dat %>% group_by(REQUEST_TYPE, STATUS) %>% summarise(COUNT = n())
      ggplotly(
-       ggplot(data = dat, aes(x = STATUS, y = COUNT, fill = REQUEST_TYPE)) +
+       ggplot(data = dat, aes(x = STATUS, y = COUNT, fill = STATUS)) +
          geom_bar(stat = "identity") + 
-         labs(title = "Request Status Overview", x = "Request Status", y = "Number of Requests") + 
+         labs(title = "Status Overview", x = "Request Status", y = "Number of Requests") + 
          theme_bw()
        )
      })
@@ -245,6 +213,36 @@ server <- function(input, output, session) {
        group_by(NEIGHBORHOOD) %>%
        mutate(NBHD_TOTAL = sum(COUNT_BY_YEAR))
    })
+   
+   output$nbhd_plot <- renderPlotly({
+     dat <- nbhdFiltered() 
+     dat <- dat %>% group_by(NEIGHBORHOOD, DATE) %>% summarise(COUNT = n())
+     ggplotly(
+       ggplot(data = dat, aes(x = DATE, y = COUNT)) +
+         geom_point(colour = "red") + geom_smooth() + 
+         labs(title = "Trend Over Time", x = "Date", y = "Number of Requests") + theme_classic()
+     )
+   })
+   
+   output$nbhd_type_plot <- renderPlotly({
+     dat <- nbhdFiltered() 
+     dat <- dat %>% group_by(NEIGHBORHOOD, REQUEST_TYPE) %>% summarise(COUNT = n()) %>% arrange(desc(COUNT)) %>% top_n(10)
+     ggplotly(
+       ggplot(data = dat, aes(x = reorder(REQUEST_TYPE, -COUNT), y = COUNT, fill = REQUEST_TYPE)) +
+         geom_bar(stat = "identity") + 
+         labs(title = "Top 10 Request Types", x = "Request Type", y = "Number of Requests") + 
+         theme_bw()
+     )
+   })
+   
+   output$nbhd_report <- DT::renderDataTable({
+     type_year <- nbhdFiltered() 
+     type_year %>% group_by(REQUEST_TYPE, YEAR) %>%
+       summarise(COUNT_BY_YEAR = n()) %>%
+       group_by(REQUEST_TYPE) %>%
+       mutate(REQUEST_TOTAL = sum(COUNT_BY_YEAR))
+   })
+   
 
 }
 
