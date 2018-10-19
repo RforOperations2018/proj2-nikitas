@@ -9,11 +9,6 @@ library(stringr)
 library(shinyjs)
 library(httr)
 library(jsonlite)
-library(rgdal)
-library(leaflet)
-library(leaflet.extras)
-library(readxl)
-library(raster)
 
 # Function to load data from API
 ckanSQL <- function(url) {
@@ -99,35 +94,26 @@ server <- function(input, output, session) {
   pittFiltered <- reactive({
     # Build API Query with proper encodes
     # If no source_select input selected
-    if (length(input$source_select) == 0 ) {
-      url <- paste0("https://data.wprdc.org/api/action/datastore_search_sql?sql=SELECT%20*%20FROM%20%2276fda9d0-69be-4dd5-8108-0de7907fc5a4%22%20WHERE%20%22CREATED_ON%22%20%3E=%20%27", 
-                    input$date_select[1], "%27%20AND%20%22CREATED_ON%22%20%3C=%20%27", input$date_select[2], 
-                    "%27%20AND%20%22NEIGHBORHOOD%22%20=%20%27", input$nbhd_select, "%27")
-      url <- gsub(pattern = " ", replacement = "%20", x = url)
-      
-    # If one source_select input selected  
-    } else if (length(input$source_select) == 1) {
+    # Building an IN selector
+    types_filter <- ifelse(length(input$type_select) > 0, 
+                           paste0("%20AND%20%22REQUEST_TYPE%22%20IN%20(%27", paste(input$type_select, collapse = "%27,%27"),"%27)"),"")
+    source_filter <- ifelse(length(input$source_select) > 0,
+                            paste0("%20AND%20%22REQUEST_ORIGIN%22%20IN%20(%27", paste(input$source_select, collapse = "%27,%27"),"%27)"),"")
       url <- paste0("https://data.wprdc.org/api/action/datastore_search_sql?sql=SELECT%20*%20FROM%20%2276fda9d0-69be-4dd5-8108-0de7907fc5a4%22%20WHERE%20%22CREATED_ON%22%20%3E=%20%27", 
                     input$date_select[1], "%27%20AND%20%22CREATED_ON%22%20%3C=%20%27", input$date_select[2], 
                     "%27%20AND%20%22NEIGHBORHOOD%22%20=%20%27", input$nbhd_select, 
-                    "%27%20AND%20%22REQUEST_ORIGIN%22%20=%20%27", input$source_select, "%27")
+                    "%27%20AND%20%22REQUEST_ORIGIN%22%20=%20%27", input$source_select, 
+                    "%27%20AND%20%22REQUEST_TYPE%22%20=%20%27", "%27")
       url <- gsub(pattern = " ", replacement = "%20", x = url)
       
-      # Multiple source_select inputs selected
-    } else {
-      primary_desc_q <- paste0(input$source_select, collapse = "%27%20OR%20%22REQUEST_ORIGIN%22%20=%20%27")
-      url <- paste0("https://data.wprdc.org/api/action/datastore_search_sql?sql=SELECT%20*%20FROM%20%2276fda9d0-69be-4dd5-8108-0de7907fc5a4%22%20WHERE%20%22CREATED_ON%22%20%3E=%20%27", 
-                    input$date_select[1], "%27%20AND%20%22CREATED_ON%22%20%3C=%20%27", input$date_select[2], 
-                    "%27%20AND%20%22NEIGHBORHOOD%22%20=%20%27", input$nbhd_select, 
-                    "%27%20AND%20%22REQUEST_ORIGIN%22%20=%20%27", primary_desc_q, "%27")
-      url <- gsub(pattern = " ", replacement = "%20", x = url)}
-    
     data <- ckanSQL(url)
     
     # Load and clean data
     if (is.null(data[1,1])){
-      alert("There is no data available for your selected inputs. Please reset filters and select different inputs.")
-      # Now, if you wanna be fancy! You could have put in an updateInputs or autmatically click your button with shinyjs()
+        updateSelectInput(session, "nbhd_select", selected = "Brookline")
+        updateSelectInput(session, "source_select",  selected = "Call Center")
+        updateDateRangeInput(session, "date_select", start = Sys.Date()-30, end = Sys.Date())
+        alert("There is no data available for your selected inputs. Your filters have been reset. Please try again.")
     } else {
       data <- data %>%
         mutate(DATE = as.Date(CREATED_ON),
