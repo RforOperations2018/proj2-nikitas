@@ -12,6 +12,23 @@ library(jsonlite)
 library(ggplot2)
 library(shinydashboard)
 library(reshape)
+library(leaflet)
+library(leaflet.extras)
+library(raster)
+library(rgdal)
+library(tidyr)
+
+#Function to bring in GeoJson
+ckanGeoSQL <- function(url) {
+  # Make the Request
+  r <- RETRY("GET", URLencode(url))
+  # Extract Content
+  c <- content(r, "text")
+  # Basic gsub to make NA's consistent with R
+  json <- gsub('NaN', 'NA', c, perl = TRUE)
+  # Create Dataframe
+  readOGR(json)
+}
 
 # Function to load data from API
 ckanSQL <- function(url) {
@@ -74,6 +91,9 @@ body <- dashboardBody(tabItems(
                             plotlyOutput("type_plot"), 
                             br(),
                             br(),
+                            leafletOutput("type_map"),
+                            br(),
+                            br(),
                             plotlyOutput("status_plot")),
                    tabPanel("Neighborhood Report by Type", 
                             DT::dataTableOutput("type_report")))
@@ -118,7 +138,7 @@ body <- dashboardBody(tabItems(
 )
 
 
-ui <- dashboardPage(header, sidebar, body, skin = "green", useShinyjs())
+ui <- dashboardPage(header, sidebar, body, skin = "purple", useShinyjs())
 
 # Defining server logic
 server <- function(input, output, session) {
@@ -145,6 +165,14 @@ server <- function(input, output, session) {
       return(data) 
     }
     
+  })
+  
+  mapFiltered <- reactive({
+    # Build API Query with proper encodes
+    # Building an IN selector
+    url <- paste0("http://pghgis-pittsburghpa.opendata.arcgis.com/datasets/dbd133a206cc4a3aa915cb28baa60fd4_0.geojson")
+    data <- ckanGeoSQL(url)
+    return(data) 
   })
   
   nbhdFiltered <- reactive({
@@ -217,6 +245,27 @@ server <- function(input, output, session) {
          theme_bw()
        )
      })
+   
+   pal311 <- colorFactor(c("red", "green"), c("Closed", "Open"))
+   
+   output$type_map <- renderLeaflet({
+     leaflet() %>%
+       # Basemaps
+       addTiles(group = "OpenStreetMap.HOT") %>%
+       addProviderTiles("Esri.NatGeoWorldMap", group = "GeoWorldMap") %>%
+       # Layers control
+       addLayersControl(
+       baseGroups = c("OpenStreetMap", "GeoWorldMap"),
+       options = layersControlOptions(collapsed = FALSE)
+       ) %>%
+       # Adding polylines, polygons, points and legend
+       addPolygons(data = mapFiltered()) %>%
+       addCircleMarkers(data = typeFiltered(), lng = ~Y, lat = ~X, radius = 1.2, color = ~pal311(STATUS)) %>%
+       addLegend(position = "bottomright" , pal = pal311, values = typeFiltered()$STATUS, title = "Status") %>%
+       addAwesomeMarkers(data = typeFiltered(), 
+                       lng = ~Y, lat = ~X, 
+                       icon = makeAwesomeIcon(icon = "check", library = "fa", markerColor = ~pal311(STATUS)), popup = ~NEIGHBORHOOD)
+   })
    
    output$type_report <- DT::renderDataTable({
      neigh_year <- typeFiltered() 
