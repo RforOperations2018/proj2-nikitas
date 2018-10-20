@@ -150,20 +150,12 @@ server <- function(input, output, session) {
     
     data <- ckanSQL(url)
     
-    # Load and clean data
-    if (is.null(data[1,1])){
-      updateSelectInput(session, "type_select", selected = "Potholes")
-      alert("There is no data available for your selected input(s). Your filters have been reset. Please try again.")
-    } else {
-      data_YEAR <- data %>% separate(CREATED_ON, "YEAR", sep = '-') %>% subset(select = c(REQUEST_ID, YEAR))
-      data_DATE <- data %>%
-        mutate(DATE = as.Date(CREATED_ON),
-               STATUS = ifelse(STATUS == 1, "Closed", "Open"))
-      data <- merge(data_DATE, data_YEAR, key = "REQUEST_ID")
-      data <- data %>% arrange(DATE)
-      return(data) 
-    }
-    
+    data_YEAR <- data %>% separate(CREATED_ON, "YEAR", sep = '-') %>% subset(select = c(REQUEST_ID, YEAR))
+    data_DATE <- data %>% mutate(DATE = as.Date(CREATED_ON), STATUS = ifelse(STATUS == 1, "Closed", "Open"))
+    data <- merge(data_DATE, data_YEAR, key = "REQUEST_ID")
+    data <- data %>% arrange(DATE)
+      
+    return(data) 
   })
   
   mapFiltered <- reactive({
@@ -183,19 +175,11 @@ server <- function(input, output, session) {
     data <- ckanSQL(url)
     
     # Load and clean data
-    if (is.null(data[1,1])){
-      updateSelectInput(session, "nbhd_select", selected = "Brookline")
-      alert("There is no data available for your selected input(s). Your filters have been reset. Please try again.")
-    } else {
-      data_YEAR <- data %>% separate(CREATED_ON, "YEAR", sep = '-') %>% subset(select = c(REQUEST_ID, YEAR))
-      data_DATE <- data %>%
-        mutate(DATE = as.Date(CREATED_ON),
-               STATUS = ifelse(STATUS == 1, "Closed", "Open"))
-      data <- merge(data_DATE, data_YEAR, key = "REQUEST_ID")
-      data <- data %>% arrange(DATE)
-      return(data) 
-    }
-    
+    data_YEAR <- data %>% separate(CREATED_ON, "YEAR", sep = '-') %>% subset(select = c(REQUEST_ID, YEAR))
+    data_DATE <- data %>% mutate(DATE = as.Date(CREATED_ON), STATUS = ifelse(STATUS == 1, "Closed", "Open"))
+    data <- merge(data_DATE, data_YEAR, key = "REQUEST_ID")
+    data <- data %>% arrange(DATE)
+    return(data) 
   })
 
   deptFiltered <- reactive({
@@ -207,19 +191,11 @@ server <- function(input, output, session) {
     data <- ckanSQL(url)
 
     # Load and clean data
-    if (is.null(data[1,1])){
-      updateSelectInput(session, "dept_select", selected = "DPW - Forestry Division")
-      alert("There is no data available for your selected input(s). Your filters have been reset. Please try again.")
-    } else {
-      data_YEAR <- data %>% separate(CREATED_ON, "YEAR", sep = '-') %>% subset(select = c(REQUEST_ID, YEAR))
-      data_DATE <- data %>%
-        mutate(DATE = as.Date(CREATED_ON),
-               STATUS = ifelse(STATUS == 1, "Closed", "Open"))
-      data <- merge(data_DATE, data_YEAR, key = "REQUEST_ID")
-      data <- data %>% arrange(DATE)
-      return(data)
-    }
-
+    data_YEAR <- data %>% separate(CREATED_ON, "YEAR", sep = '-') %>% subset(select = c(REQUEST_ID, YEAR))
+    data_DATE <- data %>% mutate(DATE = as.Date(CREATED_ON), STATUS = ifelse(STATUS == 1, "Closed", "Open"))
+    data <- merge(data_DATE, data_YEAR, key = "REQUEST_ID")
+    data <- data %>% arrange(DATE)
+    return(data)
   })
   
   # Point and smooth graph showing count of requests by type over time
@@ -259,6 +235,14 @@ server <- function(input, output, session) {
      closed <- map_data %>% filter(STATUS == "Closed") 
      open <- map_data %>% filter(STATUS == "Open")
      
+     withProgress(message = 'Making map', value = 0, {
+       n <- 10
+       for (i in 1:n) {
+         incProgress(1/n, detail = paste("Doing part", i))
+         Sys.sleep(0.1)
+       }
+     })
+     
      leaflet() %>%
        setView(lng = -79.9973317, lat = 40.4320679, zoom = 13) %>%
        # Basemaps
@@ -286,6 +270,15 @@ server <- function(input, output, session) {
    output$nbhd_plot <- renderPlotly({
      dat <- nbhdFiltered() 
      dat <- dat %>% group_by(DATE) %>% summarise(COUNT = n())
+     
+     withProgress(message = 'Making plot', value = 0, {
+       n <- 10
+       for (i in 1:n) {
+         incProgress(1/n, detail = paste("Doing part", i))
+         Sys.sleep(0.1)
+       }
+     })
+     
      ggplotly(
        ggplot(data = dat, aes(x = DATE, y = COUNT)) +
          geom_point(colour = "red") + geom_smooth() + 
@@ -315,6 +308,15 @@ server <- function(input, output, session) {
    output$dept_plot <- renderPlotly({
      dat <- deptFiltered() 
      dat <- dat %>% group_by(DATE) %>% summarise(COUNT = n())
+     
+     withProgress(message = 'Making plot', value = 0, {
+       n <- 10
+       for (i in 1:n) {
+         incProgress(1/n, detail = paste("Doing part", i))
+         Sys.sleep(0.1)
+       }
+     })
+     
      ggplotly(
        ggplot(data = dat, aes(x = DATE, y = COUNT)) +
          geom_point(colour = "red") + geom_smooth() + 
