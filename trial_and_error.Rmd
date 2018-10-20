@@ -1,0 +1,48 @@
+---
+title: "Homework 3 - Maps in Leaflet"
+author: "Nikita Setia"
+date: "28 September 2018"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+library(rgdal)
+library(leaflet)
+library(leaflet.extras)
+library(dplyr)
+library(readxl)
+library(stringr)
+library(raster)
+```
+
+# Map highlighting Boston's boundaries, neighborhoods and surrounding hydrography
+
+```{r, warning=FALSE, message=FALSE}
+#importing neighborhoods,  and hydrography data
+neighborhoods <- readOGR("./Neighborhoods_.geojson")
+pitt <- read.csv("./311-pitt.csv", header = TRUE, sep = ',')
+
+pitt_potholes <- pitt %>% filter(REQUEST_TYPE == "Potholes")
+
+```
+
+```{r, warning=FALSE, message=FALSE}
+# I normally break up my chunks a little bit more for stuff like this, but no points deducted or anything
+# Customized Palette
+pal311 <- colorFactor(c("red", "green"), c("Closed", "Open"))
+
+leaflet() %>%
+  setView(lng = -71.1241028, lat = 42.315407, zoom = 12) %>%
+  # Basemaps
+  addTiles(group = "OpenStreetMap.HOT") %>%
+  # Adding polylines, polygons, points and legend
+  addPolygons(data = neighborhoods, fill = FALSE) %>%
+  addLegend(position = "bottomright" , pal = pal311, values = pitt_potholes$STATUS, title = "Status") %>%
+  addAwesomeMarkers(data = pitt_potholes, 
+                    lng = ~X, lat = ~Y, 
+                    icon = makeAwesomeIcon(icon = "check", library = "fa", markerColor = "lightgray"), popup = ~NEIGHBORHOOD)
+
+```
+
+

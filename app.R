@@ -77,38 +77,37 @@ body <- dashboardBody(tabItems(
   # Adding elements to the 'neighborhood' menu item
   tabItem("type",
           fluidRow(
+            selectInput("type_select",
+                        "Request Type:",
+                        choices = types,
+                        multiple = FALSE,
+                        selectize = TRUE,
+                        selected = "Potholes"),
             tabBox(title = "What are the overall request trends?",
                    width = 12,
                    # adding local inputs and corresponding plots in multiple tabs
                    # creating new tab
                    tabPanel("Visualizations by Type", 
-                            selectInput("type_select",
-                                        "Request Type:",
-                                        choices = types,
-                                        multiple = FALSE,
-                                        selectize = TRUE,
-                                        selected = "Potholes"),
                             plotlyOutput("type_plot"), 
                             br(),
                             br(),
-                            leafletOutput("type_map"),
-                            br(),
-                            br(),
                             plotlyOutput("status_plot")),
+                   tabPanel("Mapping Requests by Type", 
+                            leafletOutput("type_map")),
                    tabPanel("Neighborhood Report by Type", 
                             DT::dataTableOutput("type_report")))
             )),
   tabItem("neighborhood",
           fluidRow(
+            selectInput("nbhd_select",
+                               "Neighborhood:",
+                               choices = neighborhoods,
+                               multiple = FALSE,
+                               selectize = TRUE,
+                               selected = "Brookline"),
             tabBox(title = "What is happening in each neighborhood?",
                    width = 12,
                    tabPanel("Visualizations by Neighborhood",
-                            selectInput("nbhd_select",
-                                        "Neighborhood:",
-                                        choices = neighborhoods,
-                                        multiple = FALSE,
-                                        selectize = TRUE,
-                                        selected = "Brookline"),
                             plotlyOutput("nbhd_plot"),
                             br(),
                             br(),
@@ -118,15 +117,15 @@ body <- dashboardBody(tabItems(
           )),
   tabItem("department",
           fluidRow(
+            selectInput("dept_select",
+                        "Department:",
+                        choices = departments,
+                        multiple = FALSE,
+                        selectize = TRUE,
+                        selected = "DPW - Forestry Division"),
             tabBox(title = "How is each city department performing?",
                    width = 12,
                    tabPanel("Visualizations by Department",
-                            selectInput("dept_select",
-                                        "Department:",
-                                        choices = departments,
-                                        multiple = FALSE,
-                                        selectize = TRUE,
-                                        selected = "DPW - Forestry Division"),
                             plotlyOutput("dept_plot"),
                             br(),
                             br(),
@@ -227,6 +226,14 @@ server <- function(input, output, session) {
   output$type_plot <- renderPlotly({
     dat <- typeFiltered() 
     dat <- dat %>% group_by(DATE) %>% summarise(COUNT = n())
+    
+    withProgress(message = 'Making plot', value = 0, {
+      n <- 10
+      for (i in 1:n) {
+        incProgress(1/n, detail = paste("Doing part", i))
+        Sys.sleep(0.1)
+      }
+    })
     ggplotly(
       ggplot(data = dat, aes(x = DATE, y = COUNT)) +
         geom_point(colour = "red") + geom_smooth() + 
@@ -246,25 +253,26 @@ server <- function(input, output, session) {
        )
      })
    
-   pal311 <- colorFactor(c("red", "green"), c("Closed", "Open"))
-   
    output$type_map <- renderLeaflet({
+     pal311 <- colorFactor(c("red", "green"), c("Closed", "Open"))
+     map_data <- typeFiltered() %>% filter(CREATED_ON >= Sys.Date()-30 & CREATED_ON <= Sys.Date())
+     closed <- map_data %>% filter(STATUS == "Closed") 
+     open <- map_data %>% filter(STATUS == "Open")
+     
      leaflet() %>%
+       setView(lng = -79.9973317, lat = 40.4320679, zoom = 13) %>%
        # Basemaps
        addTiles(group = "OpenStreetMap.HOT") %>%
-       addProviderTiles("Esri.NatGeoWorldMap", group = "GeoWorldMap") %>%
-       # Layers control
-       addLayersControl(
-       baseGroups = c("OpenStreetMap", "GeoWorldMap"),
-       options = layersControlOptions(collapsed = FALSE)
-       ) %>%
        # Adding polylines, polygons, points and legend
-       addPolygons(data = mapFiltered()) %>%
-       addCircleMarkers(data = typeFiltered(), lng = ~Y, lat = ~X, radius = 1.2, color = ~pal311(STATUS)) %>%
-       addLegend(position = "bottomright" , pal = pal311, values = typeFiltered()$STATUS, title = "Status") %>%
-       addAwesomeMarkers(data = typeFiltered(), 
-                       lng = ~Y, lat = ~X, 
-                       icon = makeAwesomeIcon(icon = "check", library = "fa", markerColor = ~pal311(STATUS)), popup = ~NEIGHBORHOOD)
+       addPolygons(data = mapFiltered(), fill = FALSE) %>%
+       #addCircleMarkers(data = map_data, lng = ~X, lat = ~Y, radius = 1.2, color = ~pal311(STATUS)) %>%
+       addLegend(position = "bottomright" , pal = pal311, values = map_data$STATUS, title = "Status") %>%
+       addAwesomeMarkers(data = closed, 
+                         lng = ~X, lat = ~Y, 
+                         icon = makeAwesomeIcon(icon = "check", library = "fa", markerColor = "red"), popup = ~NEIGHBORHOOD) %>%
+       addAwesomeMarkers(data = open, 
+                         lng = ~X, lat = ~Y, 
+                         icon = makeAwesomeIcon(icon = "times", library = "fa", markerColor = "green"), popup = ~NEIGHBORHOOD)
    })
    
    output$type_report <- DT::renderDataTable({
@@ -329,7 +337,7 @@ server <- function(input, output, session) {
      type_year <- deptFiltered() 
      type_year %>% group_by(DEPARTMENT, REQUEST_TYPE, YEAR) %>%
        summarise(COUNT_BY_YEAR = n()) %>%
-       group_by(NEIGHBORHOOD, REQUEST_TYPE) %>%
+       group_by(DEPARTMENT, REQUEST_TYPE) %>%
        mutate(REQUEST_TOTAL = sum(COUNT_BY_YEAR))
    })
 
