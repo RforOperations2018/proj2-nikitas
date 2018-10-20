@@ -1,0 +1,13 @@
+name: Pittsburgh311Dashboard
+title: Pittsburgh311Dashboard
+username:
+account: nikitasetia
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 525769
+bundleId: 1652540
+url: https://nikitasetia.shinyapps.io/Pittsburgh311Dashboard/
+when: 1540011439.17415
+asMultiple: FALSE
+asStatic: FALSE
+ignoredFiles: trial_and_error.R|trial_and_error.Rmd

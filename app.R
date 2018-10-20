@@ -18,7 +18,7 @@ library(raster)
 library(rgdal)
 library(tidyr)
 
-#Function to bring in GeoJson
+#Function to load GeoJson
 ckanGeoSQL <- function(url) {
   # Make the Request
   r <- RETRY("GET", URLencode(url))
@@ -48,11 +48,10 @@ ckanUniques <- function(id, field) {
   c(ckanSQL(URLencode(url)))
 }
 
+# Using ckanUniques to pull unique values of neighborhoods, types, and departments
 neighborhoods <- sort(ckanUniques("76fda9d0-69be-4dd5-8108-0de7907fc5a4", "NEIGHBORHOOD")$NEIGHBORHOOD)
 types <- sort(ckanUniques("76fda9d0-69be-4dd5-8108-0de7907fc5a4", "REQUEST_TYPE")$REQUEST_TYPE)
 departments <- sort(ckanUniques("76fda9d0-69be-4dd5-8108-0de7907fc5a4", "DEPARTMENT")$DEPARTMENT)
-
-#pdf(NULL)
 
 # Creating dashboard header
 header <- dashboardHeader(title = "Pittsburgh 311")
@@ -65,7 +64,6 @@ sidebar <- dashboardSidebar(
     menuItem("Trends by Request Type", icon = icon("line-chart"), tabName = "type"),
     menuItem("Neighborhood Insight", icon = icon("group"), tabName = "neighborhood"),
     menuItem("Department Workflow", icon = icon("building-o"), tabName = "department"),
-    # no global inputs needed
     # Adding reset button to reset ALL filters
     actionButton("reset", "Reset Filters", icon = icon("refresh"))
   )
@@ -73,9 +71,10 @@ sidebar <- dashboardSidebar(
 
 # Creating dashboard body
 body <- dashboardBody(tabItems(
-  # Adding elements to the 'neighborhood' menu item
+  # Adding elements to the 'type' menu item
   tabItem("type",
           fluidRow(
+            #adding a select input for request type to select across all tabBoxes
             selectInput("type_select",
                         "Request Type:",
                         choices = types,
@@ -84,15 +83,16 @@ body <- dashboardBody(tabItems(
                         selected = "Potholes"),
             tabBox(title = "What are the overall request trends?",
                    width = 12,
-                   # adding local inputs and corresponding plots in multiple tabs
-                   # creating new tab
+                   # creating new tab and adding plots
                    tabPanel("Visualizations by Type", 
                             plotlyOutput("type_plot"), 
                             br(),
                             br(),
                             plotlyOutput("status_plot")),
+                   # creating new tab and adding map
                    tabPanel("Mapping Requests by Type", 
                             leafletOutput("type_map")),
+                   # creating new tab and adding data
                    tabPanel("Neighborhood Report by Type", 
                             inputPanel(
                               downloadButton("download_typeReport", "Download the Report"),
@@ -100,8 +100,10 @@ body <- dashboardBody(tabItems(
                             ),
                             DT::dataTableOutput("type_report")))
             )),
+  # Adding elements to the 'neighborhood' menu item
   tabItem("neighborhood",
           fluidRow(
+            #adding a select input for neighborhood to select across all tabBoxes
             selectInput("nbhd_select",
                                "Neighborhood:",
                                choices = neighborhoods,
@@ -110,11 +112,13 @@ body <- dashboardBody(tabItems(
                                selected = "Brookline"),
             tabBox(title = "What is happening in each neighborhood?",
                    width = 12,
+                   # new tab and plots
                    tabPanel("Visualizations by Neighborhood",
                             plotlyOutput("nbhd_plot"),
                             br(),
                             br(),
                             plotlyOutput("nbhd_type_plot")),
+                   # new tab and data
                    tabPanel("Request Type Report by Neighborhood",
                             inputPanel(
                               downloadButton("download_nbhdReport", "Download the Report"),
@@ -122,8 +126,10 @@ body <- dashboardBody(tabItems(
                             ),
                             DT::dataTableOutput("nbhd_report")))
           )),
+  # new menu item for departments
   tabItem("department",
           fluidRow(
+            # select input for departments
             selectInput("dept_select",
                         "Department:",
                         choices = departments,
@@ -132,11 +138,13 @@ body <- dashboardBody(tabItems(
                         selected = "DPW - Forestry Division"),
             tabBox(title = "How is each city department performing?",
                    width = 12,
+                   # new tab with plots
                    tabPanel("Visualizations by Department",
                             plotlyOutput("dept_plot"),
                             br(),
                             br(),
                             plotlyOutput("dept_type_plot")),
+                   # new tab with data
                    tabPanel("Request Type Report by Department",
                             inputPanel(
                               downloadButton("download_deptReport", "Download the Report"),
@@ -147,12 +155,11 @@ body <- dashboardBody(tabItems(
   )
 )
 
-
 ui <- dashboardPage(header, sidebar, body, skin = "purple", useShinyjs())
 
 # Defining server logic
 server <- function(input, output, session) {
-  # Creating filtered pitt 311 data
+  # Creating filtered type data
   typeFiltered <- reactive({
     # Build API Query with proper encodes
     # Building an IN selector
@@ -161,6 +168,7 @@ server <- function(input, output, session) {
     
     data <- ckanSQL(url)
     
+    #loading and cleaning data
     data_YEAR <- data %>% separate(CREATED_ON, "YEAR", sep = '-') %>% subset(select = c(REQUEST_ID, YEAR))
     data_DATE <- data %>% mutate(DATE = as.Date(CREATED_ON), STATUS = ifelse(STATUS == 1, "Closed", "Open"))
     data <- merge(data_DATE, data_YEAR, key = "REQUEST_ID")
@@ -169,6 +177,7 @@ server <- function(input, output, session) {
     return(data) 
   })
   
+  # creating data for the map to be used later
   mapFiltered <- reactive({
     # Build API Query with proper encodes
     # Building an IN selector
@@ -177,6 +186,7 @@ server <- function(input, output, session) {
     return(data) 
   })
   
+  # creating data for neighborhood analysis
   nbhdFiltered <- reactive({
     # Build API Query with proper encodes
     # Building an IN selector
@@ -193,6 +203,7 @@ server <- function(input, output, session) {
     return(data) 
   })
 
+  # creating data for department analysis
   deptFiltered <- reactive({
     # Build API Query with proper encodes
     # Building an IN selector
@@ -209,6 +220,7 @@ server <- function(input, output, session) {
     return(data)
   })
   
+  # request type report
   type_report_Filtered <- reactive({
     dat <- typeFiltered()
     dat <- dat %>% group_by(REQUEST_TYPE, NEIGHBORHOOD, YEAR) %>%
@@ -218,27 +230,32 @@ server <- function(input, output, session) {
     return(dat)
   })
   
+  # neighborhood report
   nbhd_report_Filtered <- reactive({
     dat <- nbhdFiltered() 
     dat <- dat %>% group_by(NEIGHBORHOOD, REQUEST_TYPE, YEAR) %>%
       summarise(COUNT_BY_YEAR = n()) %>%
       group_by(NEIGHBORHOOD, REQUEST_TYPE) %>%
       mutate(REQUEST_TOTAL = sum(COUNT_BY_YEAR))
+    return(dat)
   })
   
+  # department report
   dept_report_Filtered <- reactive({
     dat <- deptFiltered()
     dat <- dat %>% group_by(DEPARTMENT, REQUEST_TYPE, YEAR) %>%
       summarise(COUNT_BY_YEAR = n()) %>%
       group_by(DEPARTMENT, REQUEST_TYPE) %>%
-      mutate(REQUEST_TOTAL = sum(COUNT_BY_YEAR))
+      mutate(DEPT_TOTAL = sum(COUNT_BY_YEAR))
+    return(dat)
   })
   
-  # Point and smooth graph showing count of requests by type over time
+  # Point and smooth graph for type menu item
   output$type_plot <- renderPlotly({
     dat <- typeFiltered() 
     dat <- dat %>% group_by(DATE) %>% summarise(COUNT = n())
     
+    # Progress indicator taken from https://shiny.rstudio.com/articles/progress.html
     withProgress(message = 'Making plot', value = 0, {
       n <- 10
       for (i in 1:n) {
@@ -246,14 +263,15 @@ server <- function(input, output, session) {
         Sys.sleep(0.1)
       }
     })
+    
     ggplotly(
       ggplot(data = dat, aes(x = DATE, y = COUNT)) +
-        geom_point(colour = "red") + geom_smooth(colour = "blue") + 
-        labs(title = "Trend Over Time", x = "Date", y = "Number of Requests") + 
-       theme_classic()
+        geom_point(colour = "red") + geom_smooth() + 
+        labs(title = "Trend Over Time", x = "Date", y = "Number of Requests")
       )
     })
-   # Bar chart showing count by status for each request
+  
+   # Bar chart for type menu item
    output$status_plot <- renderPlotly({
      dat <- typeFiltered() 
      dat <- dat %>% group_by(STATUS) %>% summarise(COUNT = n())
@@ -261,29 +279,24 @@ server <- function(input, output, session) {
        ggplot(data = dat, aes(x = STATUS, y = COUNT, fill = STATUS)) +
          geom_bar(stat = "identity") + 
          labs(title = "Status Overview", x = "Request Status", y = "Number of Requests", fill = "Status") + 
-         theme_bw(),  tooltip = "text"
+         theme_bw(),  
+       tooltip = "text"
        )
      })
    
+   # Leaflet map for type menu item
    output$type_map <- renderLeaflet({
      pal311 <- colorFactor(c("red", "green"), c("Closed", "Open"))
      map_data <- typeFiltered() %>% filter(CREATED_ON >= Sys.Date()-30 & CREATED_ON <= Sys.Date())
+     
      closed <- map_data %>% filter(STATUS == "Closed") 
      open <- map_data %>% filter(STATUS == "Open")
-     
-     withProgress(message = 'Making map', value = 0, {
-       n <- 10
-       for (i in 1:n) {
-         incProgress(1/n, detail = paste("Doing part", i))
-         Sys.sleep(0.1)
-       }
-     })
      
      leaflet() %>%
        setView(lng = -79.9973317, lat = 40.4320679, zoom = 13) %>%
        # Basemaps
        addTiles(group = "OpenStreetMap.HOT") %>%
-       # Adding polylines, polygons, points and legend
+       # Adding polygons and awesome markers (utilizing cluster options)
        addPolygons(data = mapFiltered(), fill = FALSE) %>%
        addLegend(position = "bottomright" , pal = pal311, values = map_data$STATUS, title = "Status") %>%
        addAwesomeMarkers(data = closed, 
@@ -299,30 +312,24 @@ server <- function(input, output, session) {
      
    })
    
+   # output for type report
    output$type_report <- DT::renderDataTable({
      dat <- type_report_Filtered()
    })
    
+   # plot for neighborhood menu item
    output$nbhd_plot <- renderPlotly({
      dat <- nbhdFiltered() 
      dat <- dat %>% group_by(DATE) %>% summarise(COUNT = n())
      
-     withProgress(message = 'Making plot', value = 0, {
-       n <- 10
-       for (i in 1:n) {
-         incProgress(1/n, detail = paste("Doing part", i))
-         Sys.sleep(0.1)
-       }
-     })
-     
      ggplotly(
-       ggplot(data = dat, aes(x = DATE, y = COUNT, text = paste0("<b>", "<br> Date: ", DATE, "<b>", "<br> Count: ", COUNT))) +
-         geom_point(colour = "red") + geom_smooth(colour = "blue") + 
-         labs(title = "Trend Over Time", x = "Date", y = "Number of Requests") + 
-         theme_classic(),  tooltip = "text"
+       ggplot(data = dat, aes(x = DATE, y = COUNT)) +
+         geom_point(colour = "red") + geom_smooth() + 
+         labs(title = "Trend Over Time", x = "Date", y = "Number of Requests")
      )
    })
    
+   # plot for neighborhood menu item
    output$nbhd_type_plot <- renderPlotly({
      dat <- nbhdFiltered() 
      dat <- dat %>% group_by(REQUEST_TYPE) %>% summarise(COUNT = n()) %>% arrange(desc(COUNT)) %>% top_n(10)
@@ -333,36 +340,29 @@ server <- function(input, output, session) {
                                             "<b>", "<br> Count: ", COUNT))) +
          geom_bar(stat = "identity") + 
          labs(title = "Top 10 Request Types", x = "Request Type", y = "Number of Requests", fill = "Request Type") + 
-         theme(axis.text.x = element_text(angle = 90, hjust = 1)), tooltip = "text"
+         theme(axis.text.x = element_text(angle = 60, hjust = 1)), 
+       tooltip = "text"
      )
    })
    
-   
+   # neighborhood report output
    output$nbhd_report <- DT::renderDataTable({
      dat <- nbhd_report_Filtered()
    })
    
+   # plot for department menu item
    output$dept_plot <- renderPlotly({
      dat <- deptFiltered() 
      dat <- dat %>% group_by(DATE) %>% summarise(COUNT = n())
      
-     withProgress(message = 'Making plot', value = 0, {
-       n <- 10
-       for (i in 1:n) {
-         incProgress(1/n, detail = paste("Doing part", i))
-         Sys.sleep(0.1)
-       }
-     })
-     
      ggplotly(
-       ggplot(data = dat, aes(x = DATE, y = COUNT, text = paste0("<b>", "<br> Date: ", DATE, 
-                                                                 "<b>", "<br> Count: ", COUNT))) +
-         geom_point(colour = "red") + geom_smooth(colour = "blue") + 
-         labs(title = "Trend Over Time", x = "Date", y = "Number of Requests") + 
-         theme_classic(),  tooltip = "text"
+       ggplot(data = dat, aes(x = DATE, y = COUNT)) +
+         geom_point(colour = "red") + geom_smooth() + 
+         labs(title = "Trend Over Time", x = "Date", y = "Number of Requests") + theme_classic()
      )
    })
    
+   # plot for department menu item
    output$dept_type_plot <- renderPlotly({
      dat <- deptFiltered() 
      dat <- dat %>% group_by(REQUEST_TYPE) %>% summarise(COUNT = n()) %>% arrange(desc(COUNT)) %>% top_n(10)
@@ -372,27 +372,28 @@ server <- function(input, output, session) {
                                             "<b>", "<br> Count: ", COUNT))) +
          geom_bar(stat = "identity") + 
          labs(title = "Top 10 Request Types", x = "Request Type", y = "Number of Requests", fill = "Request Type") + 
-         theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-         theme_bw(),  tooltip = "text"
+         theme(axis.text.x = element_text(angle = 60, hjust = 1)),
+       tooltip = "text"
      )
    })
    
+   # department report
    output$dept_report <- DT::renderDataTable({
      dat <- dept_report_Filtered() 
    })
    
    
-   # Downloading data in the datatable
+   # Downloading type report
    output$download_typeReport <- downloadHandler(
      filename = function() {
        paste("type-report-", Sys.Date(), ".csv", sep="")
      },
      content = function(file) {
-       write.csv(type_report_Filtered, file)
+       write.csv(type_report_Filtered(), file)
      }
    )
    
-   # Downloading data in the datatable
+   # Downloading raw type data
    output$download_typeRaw <- downloadHandler(
      filename = function() {
        paste("type-raw-", Sys.Date(), ".csv", sep="")
@@ -402,7 +403,7 @@ server <- function(input, output, session) {
      }
    )
    
-   # Downloading data in the datatable
+   # Downloading neighborhood report
    output$download_nbhdReport <- downloadHandler(
      filename = function() {
        paste("nbhd-report-", Sys.Date(), ".csv", sep="")
@@ -412,7 +413,7 @@ server <- function(input, output, session) {
      }
    )
    
-   # Downloading data in the datatable
+   # Downloading raw neighborhood data
    output$download_nbhdRaw <- downloadHandler(
      filename = function() {
        paste("nbhd-raw-", Sys.Date(), ".csv", sep="")
@@ -422,8 +423,8 @@ server <- function(input, output, session) {
      }
    )
    
-   # Downloading data in the datatable
-   output$download_typeReport <- downloadHandler(
+   # Downloading department report
+   output$download_deptReport <- downloadHandler(
      filename = function() {
        paste("dept-report-", Sys.Date(), ".csv", sep="")
      },
@@ -432,7 +433,7 @@ server <- function(input, output, session) {
      }
    )
    
-   # Downloading data in the datatable
+   # Downloading raw department data
    output$download_deptRaw <- downloadHandler(
      filename = function() {
        paste("dept-raw-", Sys.Date(), ".csv", sep="")
