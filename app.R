@@ -55,17 +55,16 @@ departments <- sort(ckanUniques("76fda9d0-69be-4dd5-8108-0de7907fc5a4", "DEPARTM
 #pdf(NULL)
 
 # Creating dashboard header
-header <- dashboardHeader(title = "Pittsburgh 311 Dashboard")
+header <- dashboardHeader(title = "Pittsburgh 311")
 
 # Creating dashboard sidebar
 sidebar <- dashboardSidebar(
   sidebarMenu(
     id = "tabs",
     # Setting dashboard menu items / pages
-    menuItem("Trends by Request Type", icon = icon("hand-o-up"), tabName = "type"),
+    menuItem("Trends by Request Type", icon = icon("line-chart"), tabName = "type"),
     menuItem("Neighborhood Insight", icon = icon("group"), tabName = "neighborhood"),
     menuItem("Department Workflow", icon = icon("building-o"), tabName = "department"),
-    menuItem("Data Exploration", icon = icon("table"), tabName = "data"),
     # no global inputs needed
     # Adding reset button to reset ALL filters
     actionButton("reset", "Reset Filters", icon = icon("refresh"))
@@ -95,6 +94,10 @@ body <- dashboardBody(tabItems(
                    tabPanel("Mapping Requests by Type", 
                             leafletOutput("type_map")),
                    tabPanel("Neighborhood Report by Type", 
+                            inputPanel(
+                              downloadButton("download_typeReport", "Download the Report"),
+                              downloadButton("download_typeRaw", "Download the Raw Data")
+                            ),
                             DT::dataTableOutput("type_report")))
             )),
   tabItem("neighborhood",
@@ -113,6 +116,10 @@ body <- dashboardBody(tabItems(
                             br(),
                             plotlyOutput("nbhd_type_plot")),
                    tabPanel("Request Type Report by Neighborhood",
+                            inputPanel(
+                              downloadButton("download_nbhdReport", "Download the Report"),
+                              downloadButton("download_nbhdRaw", "Download the Raw Data")
+                            ),
                             DT::dataTableOutput("nbhd_report")))
           )),
   tabItem("department",
@@ -131,6 +138,10 @@ body <- dashboardBody(tabItems(
                             br(),
                             plotlyOutput("dept_type_plot")),
                    tabPanel("Request Type Report by Department",
+                            inputPanel(
+                              downloadButton("download_deptReport", "Download the Report"),
+                              downloadButton("download_deptRaw", "Download the Raw Data")
+                            ),
                             DT::dataTableOutput("dept_report")))
           ))
   )
@@ -198,6 +209,31 @@ server <- function(input, output, session) {
     return(data)
   })
   
+  type_report_Filtered <- reactive({
+    dat <- typeFiltered()
+    dat <- dat %>% group_by(REQUEST_TYPE, NEIGHBORHOOD, YEAR) %>%
+      summarise(COUNT_BY_YEAR = n()) %>%
+      group_by(REQUEST_TYPE, NEIGHBORHOOD) %>%
+      mutate(NBHD_TOTAL = sum(COUNT_BY_YEAR))
+    return(dat)
+  })
+  
+  nbhd_report_Filtered <- reactive({
+    dat <- nbhdFiltered() 
+    dat <- dat %>% group_by(NEIGHBORHOOD, REQUEST_TYPE, YEAR) %>%
+      summarise(COUNT_BY_YEAR = n()) %>%
+      group_by(NEIGHBORHOOD, REQUEST_TYPE) %>%
+      mutate(REQUEST_TOTAL = sum(COUNT_BY_YEAR))
+  })
+  
+  dept_report_Filtered <- reactive({
+    dat <- deptFiltered()
+    dat <- dat %>% group_by(DEPARTMENT, REQUEST_TYPE, YEAR) %>%
+      summarise(COUNT_BY_YEAR = n()) %>%
+      group_by(DEPARTMENT, REQUEST_TYPE) %>%
+      mutate(REQUEST_TOTAL = sum(COUNT_BY_YEAR))
+  })
+  
   # Point and smooth graph showing count of requests by type over time
   output$type_plot <- renderPlotly({
     dat <- typeFiltered() 
@@ -212,7 +248,7 @@ server <- function(input, output, session) {
     })
     ggplotly(
       ggplot(data = dat, aes(x = DATE, y = COUNT)) +
-        geom_point(colour = "red") + geom_smooth() + 
+        geom_point(colour = "red") + geom_smooth(colour = "blue") + 
         labs(title = "Trend Over Time", x = "Date", y = "Number of Requests") + 
        theme_classic()
       )
@@ -224,8 +260,8 @@ server <- function(input, output, session) {
      ggplotly(
        ggplot(data = dat, aes(x = STATUS, y = COUNT, fill = STATUS)) +
          geom_bar(stat = "identity") + 
-         labs(title = "Status Overview", x = "Request Status", y = "Number of Requests") + 
-         theme_bw()
+         labs(title = "Status Overview", x = "Request Status", y = "Number of Requests", fill = "Status") + 
+         theme_bw(),  tooltip = "text"
        )
      })
    
@@ -249,22 +285,22 @@ server <- function(input, output, session) {
        addTiles(group = "OpenStreetMap.HOT") %>%
        # Adding polylines, polygons, points and legend
        addPolygons(data = mapFiltered(), fill = FALSE) %>%
-       #addCircleMarkers(data = map_data, lng = ~X, lat = ~Y, radius = 1.2, color = ~pal311(STATUS)) %>%
        addLegend(position = "bottomright" , pal = pal311, values = map_data$STATUS, title = "Status") %>%
        addAwesomeMarkers(data = closed, 
                          lng = ~X, lat = ~Y, 
-                         icon = makeAwesomeIcon(icon = "check", library = "fa", markerColor = "red"), popup = ~NEIGHBORHOOD) %>%
+                         icon = makeAwesomeIcon(icon = "check", library = "fa", markerColor = "red"), 
+                         label = ~REQUEST_TYPE,
+                         clusterOptions = markerClusterOptions()) %>%
        addAwesomeMarkers(data = open, 
                          lng = ~X, lat = ~Y, 
-                         icon = makeAwesomeIcon(icon = "times", library = "fa", markerColor = "green"), popup = ~NEIGHBORHOOD)
+                         icon = makeAwesomeIcon(icon = "times", library = "fa", markerColor = "green"), 
+                         label = ~REQUEST_TYPE,
+                         clusterOptions = markerClusterOptions())
+     
    })
    
    output$type_report <- DT::renderDataTable({
-     neigh_year <- typeFiltered() 
-     neigh_year %>% group_by(REQUEST_TYPE, NEIGHBORHOOD, YEAR) %>%
-       summarise(COUNT_BY_YEAR = n()) %>%
-       group_by(REQUEST_TYPE, NEIGHBORHOOD) %>%
-       mutate(NBHD_TOTAL = sum(COUNT_BY_YEAR))
+     dat <- type_report_Filtered()
    })
    
    output$nbhd_plot <- renderPlotly({
@@ -280,9 +316,10 @@ server <- function(input, output, session) {
      })
      
      ggplotly(
-       ggplot(data = dat, aes(x = DATE, y = COUNT)) +
-         geom_point(colour = "red") + geom_smooth() + 
-         labs(title = "Trend Over Time", x = "Date", y = "Number of Requests") + theme_classic()
+       ggplot(data = dat, aes(x = DATE, y = COUNT, text = paste0("<b>", "<br> Date: ", DATE, "<b>", "<br> Count: ", COUNT))) +
+         geom_point(colour = "red") + geom_smooth(colour = "blue") + 
+         labs(title = "Trend Over Time", x = "Date", y = "Number of Requests") + 
+         theme_classic(),  tooltip = "text"
      )
    })
    
@@ -290,19 +327,19 @@ server <- function(input, output, session) {
      dat <- nbhdFiltered() 
      dat <- dat %>% group_by(REQUEST_TYPE) %>% summarise(COUNT = n()) %>% arrange(desc(COUNT)) %>% top_n(10)
      ggplotly(
-       ggplot(data = dat, aes(x = reorder(REQUEST_TYPE, -COUNT), y = COUNT, fill = REQUEST_TYPE)) +
+       ggplot(data = dat, 
+              aes(x = reorder(REQUEST_TYPE, -COUNT), y = COUNT, fill = REQUEST_TYPE, 
+                              text = paste0("<b>", "<br> Request Type: ", REQUEST_TYPE, 
+                                            "<b>", "<br> Count: ", COUNT))) +
          geom_bar(stat = "identity") + 
-         labs(title = "Top 10 Request Types", x = "Request Type", y = "Number of Requests") + 
-         theme_bw()
+         labs(title = "Top 10 Request Types", x = "Request Type", y = "Number of Requests", fill = "Request Type") + 
+         theme(axis.text.x = element_text(angle = 90, hjust = 1)), tooltip = "text"
      )
    })
    
+   
    output$nbhd_report <- DT::renderDataTable({
-     type_year <- nbhdFiltered() 
-     type_year %>% group_by(NEIGHBORHOOD, REQUEST_TYPE, YEAR) %>%
-       summarise(COUNT_BY_YEAR = n()) %>%
-       group_by(NEIGHBORHOOD, REQUEST_TYPE) %>%
-       mutate(REQUEST_TOTAL = sum(COUNT_BY_YEAR))
+     dat <- nbhd_report_Filtered()
    })
    
    output$dept_plot <- renderPlotly({
@@ -318,9 +355,11 @@ server <- function(input, output, session) {
      })
      
      ggplotly(
-       ggplot(data = dat, aes(x = DATE, y = COUNT)) +
-         geom_point(colour = "red") + geom_smooth() + 
-         labs(title = "Trend Over Time", x = "Date", y = "Number of Requests") + theme_classic()
+       ggplot(data = dat, aes(x = DATE, y = COUNT, text = paste0("<b>", "<br> Date: ", DATE, 
+                                                                 "<b>", "<br> Count: ", COUNT))) +
+         geom_point(colour = "red") + geom_smooth(colour = "blue") + 
+         labs(title = "Trend Over Time", x = "Date", y = "Number of Requests") + 
+         theme_classic(),  tooltip = "text"
      )
    })
    
@@ -328,19 +367,87 @@ server <- function(input, output, session) {
      dat <- deptFiltered() 
      dat <- dat %>% group_by(REQUEST_TYPE) %>% summarise(COUNT = n()) %>% arrange(desc(COUNT)) %>% top_n(10)
      ggplotly(
-       ggplot(data = dat, aes(x = reorder(REQUEST_TYPE, -COUNT), y = COUNT, fill = REQUEST_TYPE)) +
+       ggplot(data = dat, aes(x = reorder(REQUEST_TYPE, -COUNT), y = COUNT, fill = REQUEST_TYPE, 
+                              text = paste0("<b>", "<br> Request Type: ", REQUEST_TYPE, 
+                                            "<b>", "<br> Count: ", COUNT))) +
          geom_bar(stat = "identity") + 
-         labs(title = "Top 10 Request Types", x = "Request Type", y = "Number of Requests") + 
-         theme_bw()
+         labs(title = "Top 10 Request Types", x = "Request Type", y = "Number of Requests", fill = "Request Type") + 
+         theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+         theme_bw(),  tooltip = "text"
      )
    })
    
    output$dept_report <- DT::renderDataTable({
-     type_year <- deptFiltered() 
-     type_year %>% group_by(DEPARTMENT, REQUEST_TYPE, YEAR) %>%
-       summarise(COUNT_BY_YEAR = n()) %>%
-       group_by(DEPARTMENT, REQUEST_TYPE) %>%
-       mutate(REQUEST_TOTAL = sum(COUNT_BY_YEAR))
+     dat <- dept_report_Filtered() 
+   })
+   
+   
+   # Downloading data in the datatable
+   output$download_typeReport <- downloadHandler(
+     filename = function() {
+       paste("type-report-", Sys.Date(), ".csv", sep="")
+     },
+     content = function(file) {
+       write.csv(type_report_Filtered, file)
+     }
+   )
+   
+   # Downloading data in the datatable
+   output$download_typeRaw <- downloadHandler(
+     filename = function() {
+       paste("type-raw-", Sys.Date(), ".csv", sep="")
+     },
+     content = function(file) {
+       write.csv(typeFiltered(), file)
+     }
+   )
+   
+   # Downloading data in the datatable
+   output$download_nbhdReport <- downloadHandler(
+     filename = function() {
+       paste("nbhd-report-", Sys.Date(), ".csv", sep="")
+     },
+     content = function(file) {
+       write.csv(nbhd_report_Filtered(), file)
+     }
+   )
+   
+   # Downloading data in the datatable
+   output$download_nbhdRaw <- downloadHandler(
+     filename = function() {
+       paste("nbhd-raw-", Sys.Date(), ".csv", sep="")
+     },
+     content = function(file) {
+       write.csv(nbhdFiltered(), file)
+     }
+   )
+   
+   # Downloading data in the datatable
+   output$download_typeReport <- downloadHandler(
+     filename = function() {
+       paste("dept-report-", Sys.Date(), ".csv", sep="")
+     },
+     content = function(file) {
+       write.csv(dept_report_Filtered(), file)
+     }
+   )
+   
+   # Downloading data in the datatable
+   output$download_deptRaw <- downloadHandler(
+     filename = function() {
+       paste("dept-raw-", Sys.Date(), ".csv", sep="")
+     },
+     content = function(file) {
+       write.csv(deptFiltered(), file)
+     }
+   )
+   
+   # Reseting Filter Data
+   observeEvent(input$reset, {
+     updateSelectInput(session, "nbhd_select", selected = "Brookline")
+     updateSelectInput(session, "type_select", selected = "Potholes")
+     updateSelectInput(session, "dept_select",  selected = "DPW - Forestry Division")
+     alert("You have reset the application!")
    })
 
 }
