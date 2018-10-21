@@ -75,6 +75,7 @@ body <- dashboardBody(tabItems(
   tabItem("type",
           fluidRow(
             #adding a select input for request type to select across all tabBoxes
+            # This should really be in a box. The spacing is just a tad funky without it
             selectInput("type_select",
                         "Request Type:",
                         choices = types,
@@ -130,6 +131,7 @@ body <- dashboardBody(tabItems(
   tabItem("department",
           fluidRow(
             # select input for departments
+            # Same thing as before, put it in a box!
             selectInput("dept_select",
                         "Department:",
                         choices = departments,
@@ -208,6 +210,7 @@ server <- function(input, output, session) {
     # Build API Query with proper encodes
     # Building an IN selector
     url <- paste0("https://data.wprdc.org/api/action/datastore_search_sql?sql=SELECT%20*%20FROM%20%2276fda9d0-69be-4dd5-8108-0de7907fc5a4%22%20WHERE%20%22DEPARTMENT%22%20=%20%27", input$dept_select, "%27")
+    # Probably would have been easier to just add this to the ckanSQL function I think...
     url <- gsub(pattern = " ", replacement = "%20", x = url)
 
     data <- ckanSQL(url)
